@@ -1,5 +1,16 @@
 #![no_std] //stdクレートは使わない
 #![no_main] //main関数は使わない
+#![feature(offset_of)]
+
+use core::mem::offset_of;
+use core::mem::size_of;
+use core::panic::PanicInfo;
+use core::ptr::null_mut;
+use core::slice;
+
+type EfiVoid = u8;
+type EfiHandle = u64;
+type Result<T> = core::result::Result<T, &'static str>;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -16,6 +27,13 @@ const EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID: EfiGuid = EfiGuid {
     data2: 0x4a38,
     data3: [0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a],
 };
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[must_use]
+#[repr(u64)]
+enum EfiStatus {
+    Success = 0,
+}
 
 #[repr(C)]
 struct EfiBootServicesTable {
@@ -62,6 +80,7 @@ struct EfiGraphicsOutputProtocolPixelInfo {
     _padding0: [u32; 5],
     pub pixels_per_scan_line: u32, //水平方向のデータに含まれる画素数
 }
+const _: () = assert!(size_of::<EfiGraphicsOutputProtocolPixelInfo>() == 36);
 
 fn locate_graphic_protocol<'a>(
     efi_system_table: &EfiSystemTable,
@@ -76,11 +95,11 @@ fn locate_graphic_protocol<'a>(
     if status != EfiStatus::Success {
         return Err("Failed to locate graphics output protocol");
     }
-    OK(unsafe { &*graphic_output_protocol })
+    Ok(unsafe { &*graphic_output_protocol })
 }
 
 #[no_mangle]
-fn efi_main(_image_handle: Efihandle, efi_system_table: &EfiSystemTable) {
+fn efi_main(_image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     let efi_graphics_output_protocol = locate_graphic_protocol(efi_system_table).unwrap();
     let vram_addr = efi_graphics_output_protocol.mode.frame_buffer_base;
     let vram_byte_size = efi_graphics_output_protocol.mode.frame_buffer_size;
@@ -92,8 +111,6 @@ fn efi_main(_image_handle: Efihandle, efi_system_table: &EfiSystemTable) {
     }
     loop {}
 }
-
-use core::{mem::offset_of, panic::PanicInfo, ptr::null_mut};
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
