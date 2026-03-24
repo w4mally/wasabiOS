@@ -12,7 +12,7 @@ type EfiVoid = u8;
 type EfiHandle = u64;
 type Result<T> = core::result::Result<T, &'static str>;
 
-#[repr(C)]
+#[repr(C)] //メモリ配列をC言語と同等にする
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct EfiGuid{
     pub data0: u32,
@@ -21,6 +21,7 @@ struct EfiGuid{
     pub data3: [u8; 8],
 }
 
+//ソースは仕様書
 const EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID: EfiGuid = EfiGuid {
     data0: 0x9042a9de,
     data1: 0x23dc,
@@ -38,6 +39,7 @@ enum EfiStatus {
 #[repr(C)]
 struct EfiBootServicesTable {
     _reserved0: [u64; 40],
+    //GUIDからプロトコルを検索
     locate_protocol: extern "win64" fn(
         protocol: *const EfiGuid,
         registration: *const EfiVoid,
@@ -46,6 +48,7 @@ struct EfiBootServicesTable {
 }
 const _: () = assert!(offset_of!(EfiBootServicesTable, locate_protocol) == 320);
 
+//UEFIの各プロトコルのポインタを持つ
 #[repr(C)]
 struct EfiSystemTable {
     _reserved0: [u64; 12],
@@ -53,11 +56,12 @@ struct EfiSystemTable {
 }
 const _: () = assert!(offset_of!(EfiSystemTable, boot_services) == 96);
 
+//画面描画に関するプロトコル
 #[repr(C)]
 #[derive(Debug)]
 struct EfiGraphicsOutputProtocol<'a> {
     reserved: [u64; 3],
-    pub mode: &'a EfiGraphicsOutputProtocolMode<'a>,
+    pub mode: &'a EfiGraphicsOutputProtocolMode<'a>, //利用中の画面モードを示すメンバ
 }
 
 #[repr(C)]
@@ -82,6 +86,7 @@ struct EfiGraphicsOutputProtocolPixelInfo {
 }
 const _: () = assert!(size_of::<EfiGraphicsOutputProtocolPixelInfo>() == 36);
 
+//UEFIからEfiGraphicsOutputProtocolを取得
 fn locate_graphic_protocol<'a>(
     efi_system_table: &EfiSystemTable,
 ) -> Result<&'a EfiGraphicsOutputProtocol<'a>> {
