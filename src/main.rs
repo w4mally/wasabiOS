@@ -2,6 +2,7 @@
 #![no_main] //main関数は使わない
 #![feature(offset_of)]
 
+use core::arch::asm;
 use core::mem::offset_of;
 use core::mem::size_of;
 use core::panic::PanicInfo;
@@ -14,7 +15,7 @@ type Result<T> = core::result::Result<T, &'static str>;
 
 #[repr(C)] //メモリ配列をC言語と同等にする
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct EfiGuid{
+struct EfiGuid {
     pub data0: u32,
     pub data1: u16,
     pub data2: u16,
@@ -80,7 +81,7 @@ struct EfiGraphicsOutputProtocolMode<'a> {
 struct EfiGraphicsOutputProtocolPixelInfo {
     version: u32,
     pub horizontal_resolution: u32, //水平方向の画素数
-    pub vertical_resolution: u32, //垂直方向の画素数
+    pub vertical_resolution: u32,   //垂直方向の画素数
     _padding0: [u32; 5],
     pub pixels_per_scan_line: u32, //水平方向のデータに含まれる画素数
 }
@@ -94,13 +95,16 @@ fn locate_graphic_protocol<'a>(
     let status = (efi_system_table.boot_services.locate_protocol)(
         &EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID,
         null_mut::<EfiVoid>(),
-        &mut graphic_output_protocol as *mut *mut EfiGraphicsOutputProtocol
-            as *mut *mut EfiVoid,
+        &mut graphic_output_protocol as *mut *mut EfiGraphicsOutputProtocol as *mut *mut EfiVoid,
     );
     if status != EfiStatus::Success {
         return Err("Failed to locate graphics output protocol");
     }
     Ok(unsafe { &*graphic_output_protocol })
+}
+
+pub fn hlt() {
+    unsafe { asm!("hlt") }
 }
 
 #[no_mangle]
@@ -114,10 +118,14 @@ fn efi_main(_image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     for e in vram {
         *e = 0xffffff;
     }
-    loop {}
+    loop {
+        hlt()
+    }
 }
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    loop{}
+    loop {
+        hlt()
+    }
 }
