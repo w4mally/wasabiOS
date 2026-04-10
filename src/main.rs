@@ -3,7 +3,7 @@
 #![feature(offset_of)]
 
 use core::arch::asm;
-use core::f32::consts::PHI;
+use core::f32::consts;
 use core::mem::offset_of;
 use core::mem::size_of;
 use core::panic::PanicInfo;
@@ -112,19 +112,14 @@ pub fn hlt() {
 #[no_mangle]
 fn efi_main(_image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     let mut vram = init_vram(efi_system_table).expect("init vram failed");
-    for y in 0..vram.height {
-        for x in 0..vram.width {
-            if let Some(pixel) = vram.pixel_at_mut(x, y) {
-                *pixel = 0x00ff00;
-            }
-        }
-    }
-    for y in 0..vram.height/2 {
-        for x in 0..vram.width/2 {
-            if let Some(pixel) = vram.pixel_at_mut(x, y) {
-                *pixel = 0xff0000;
-            }
-        }
+    let vw = vram.width;
+    let vh =vram.height;
+    fill_rect(&mut vram, 0x000000, 0, 0, vw, vh).expect("fill rect failed");
+    fill_rect(&mut vram, 0xff0000, 32, 32, 32, 32).expect("fill rect failed");
+    fill_rect(&mut vram, 0x00ff00, 64, 64, 64, 64).expect("fill rect failed");
+    fill_rect(&mut vram, 0x0000ff, 128, 128, 128, 128).expect("fill rect failed");
+    for i in 0..256 {
+        let _ = draw_point(&mut vram, 0x010101*i as u32, i, i);
     }
     loop {
         hlt()
@@ -243,6 +238,51 @@ fn fill_rect<T: Bitmap>(
             unsafe {
                 unchecked_draw_point(buf, color, x, y);
             }
+        }
+    }
+    Ok(())
+}
+
+fn calc_slope_point(da: i64, db: i64, ia: i64) -> Option<i64> {
+    if da < db {
+        None
+    } else if da == 0 {
+        Some(0)
+    } else if (0..=da).contains(&ia) {
+        Some((2*db*ia+da)/da/2)
+    } else {
+        None
+    }
+}
+
+fn draw_line<T: Bitmap>(
+    buf: &mut T,
+    color: u32,
+    x0: i64,
+    y0: i64,
+    x1: i64,
+    y1: i64,
+) -> Result<()> {
+    if !buf.is_in_x_range(x0)
+        || !buf.is_in_x_range(x1)
+        || !buf.is_in_y_range(y0)
+        || !buf.is_in_y_range(y1)
+    {
+        return Err("Out of Range");
+    }
+    let dx = (x1 - x0).abs();
+    let sx = (x1 - x0).signum(); //符号
+    let dy = (y1 - y0).abs();
+    let sy = (y1 - y0).signum();
+    if dx >= dy {
+        for (rx, ry) in (0..dx).flat_map(|rx| calc_slope_point(dx, dy, rx).map(|ry| (rx, ry)))
+        {
+            draw_point(buf, color, x0+rx*sx, y0+ry*sy)?;
+        }
+    } else {
+        for (rx, ry) in (0..dy).flat_map(|rx| calc_slope_point(dx, dy, rx).map(|ry| (rx, ry)))
+        {
+            draw_point(buf, color, x0+rx*sx, y0+ry*sy)?;
         }
     }
     Ok(())
